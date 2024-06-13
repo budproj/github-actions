@@ -1,0 +1,95 @@
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+        description: Environment to deploy.
+      k8s_repository:
+        type: string
+        required: false
+        default: "budproj/k8s-manifests"
+        description: K8S repository containing file `overlays/{environment}/{project}/{repository}/kustomization.yaml`.
+      k8s_repository__ref:
+        type: string
+        required: false
+        default: "main"
+        description: K8S repository branch to commit to.
+      project:
+        type: string
+        required: false
+        default: "bud-apps"
+        description: Project to search for file on `k8s_repository`
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      GITHUB_TOKEN:
+        required: true
+      SSH_KEY:
+        required: true
+
+env:
+  REPO: ${{ github.event.repository.name }}
+  TAG: ${{ github.sha }}
+  K8S_FILE: overlays/${{ inputs.environment }}/${{ inputs.project }}/${{ github.event.repository.name }}/kustomization.yaml
+  REPLACE_STR: "s/newTag: [a-z0-9]*/newTag: ${{ github.sha }}/"
+  
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: sa-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push image to ECR
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: "${{ steps.login-ecr.outputs.registry }}/${{ env.REPO }}:${{ env.TAG }}"
+          build-args: |
+            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+
+  deploy:
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: 'budproj/k8s-manifests'
+          ref: 'feat/canary-cluster'
+          ssh-key: ${{ secrets.SSH_KEY }}
+
+      - name: Setup git as a Github Actions user
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Edit image tag on kustomize
+        run: |
+          sed -i ${{ env.REPLACE_STR }} ${{ env.K8S_FILE }}
+
+      - name: Push to our repos
+        run: |
+          git commit -a -m "Deploy ${{ env.REPO }} to ${{ inputs.environment }}"
+          git push
+          git tag ${{ inputs.environment }} -f && git push origin ${{ inputs.environment }} -f
+
+
