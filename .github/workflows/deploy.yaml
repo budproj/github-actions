@@ -82,7 +82,7 @@ jobs:
 
       - name: Edit image tag on kustomize
         run: |
-          sed -i ${{ env.REPLACE_STR }} ${{ env.K8S_FILE }}
+          sed -i "${{ env.REPLACE_STR }}" "${{ env.K8S_FILE }}"
 
       - name: Push to our repos
         run: |
