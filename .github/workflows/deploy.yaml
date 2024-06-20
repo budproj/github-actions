@@ -71,8 +71,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: 'budproj/k8s-manifests'
-          ref: 'feat/canary-cluster'
+          repository: ${{ inputs.k8s_repository }}
+          ref: ${{ inputs.k8s_repository__ref }}
           ssh-key: ${{ secrets.SSH_KEY }}
 
       - name: Setup git as a Github Actions user
