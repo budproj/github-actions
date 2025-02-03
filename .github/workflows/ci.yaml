@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  workflow_call:
+    inputs:
+      docker_target:
+        type: string
+        required: false
+        default: "test"
+        description: docker step to run
+
+env:
+  REPO: ${{ github.event.repository.name }}
+  TAG: ${{ github.sha }}
+  
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Build and push image to ECR
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          tags: "${{ env.REPO }}:${{ env.TAG }}"
+          target: "${{ inputs.docker_target }}"
+
